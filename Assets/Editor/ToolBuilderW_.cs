@@ -102,5 +102,6 @@ public class ToolBuilderW_ : EditorWindow
             Handles.color = Color.red;
             Handles.DrawWireDisc(hit.point, Vector3.up, DiscSize);
         }
+        sceneView.Repaint();
     }
 }
