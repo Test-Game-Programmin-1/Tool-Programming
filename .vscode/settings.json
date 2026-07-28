@@ -67,6 +67,6 @@
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "Takasui.slnx",
+    "dotnet.defaultSolution": "toolss.slnx",
     "dotnet.enableWorkspaceBasedDevelopment": false
 }
