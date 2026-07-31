@@ -5,6 +5,8 @@ using System.IO;
 using Unity.VectorGraphics;
 using System.Net.WebSockets;
 using Unity.GraphToolkit.Editor;
+using Unity.VisualScripting;
+using Unity.Mathematics;
 
 public class ToolBuilderW_ : EditorWindow
 {
@@ -150,6 +152,19 @@ public class ToolBuilderW_ : EditorWindow
     void Preview(SceneView sceneView)
     {
         Event e = Event.current;
+        if(e.type == EventType.KeyDown && e.shift)
+        {
+            if(e.keyCode == KeyCode.Q)
+            {
+                curRotY -= 90;
+                e.Use();
+            }
+            if(e.keyCode == KeyCode.E)
+            {
+                curRotY += 90;
+                e.Use();
+            }
+        }
         Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
         Plane ground = new(Vector3.up, Vector3.zero);
         if (ground.Raycast(ray, out float hit))
