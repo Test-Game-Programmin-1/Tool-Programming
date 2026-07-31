@@ -2,11 +2,8 @@ using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 using System.IO;
-using Unity.VectorGraphics;
-using System.Net.WebSockets;
-using Unity.GraphToolkit.Editor;
-using Unity.VisualScripting;
-using Unity.Mathematics;
+using UnityEngine.UIElements;
+
 
 public class ToolBuilderW_ : EditorWindow
 {
@@ -30,22 +27,29 @@ public class ToolBuilderW_ : EditorWindow
         public Mesh MeshPrefab;
         public Material[] materialPrefab;
         public Matrix4x4 localMatrixPref;
+
     }
     const string path = "Assets/Prefab";
     readonly List<CategoryData> categoryList = new();
     CategoryData selectedCategory;
 
+    readonly List<GameObject> SpawnedRooms = new();
+    static GameObject container;
     static readonly List<CategoryData> roomParts = new();
     static GameObject selectedPrefab;
 
     float curRotY = 0f;
     Vector3 prevPos;
     Quaternion prevRot;
+    bool isCurrentlySnaped = false;
     private void OnEnable()
     {
         FoldScanner();
+        RefreshSpawnedRooms();
         SceneView.duringSceneGui += OnSceneGUI;
     }
+
+
     private void OnDisable()
     {
         SceneView.duringSceneGui -= OnSceneGUI;
@@ -83,6 +87,16 @@ public class ToolBuilderW_ : EditorWindow
         {
             selectedCategory = categoryList[0];
             SelectedPrefab(selectedCategory.RoomAssets[0]);
+        }
+    }
+
+    private void RefreshSpawnedRooms()
+    {
+        SpawnedRooms.Clear();
+        DoorsController_[] DC_ = FindObjectsByType<DoorsController_>(FindObjectsSortMode.None);
+        foreach(var room in DC_)
+        {
+            SpawnedRooms.Add(room.gameObject);
         }
     }
     private void OnGUI()
@@ -171,13 +185,79 @@ public class ToolBuilderW_ : EditorWindow
         {
             Vector3 hitMarker = ray.GetPoint(hit);
             Quaternion Rotation = Quaternion.Euler(0, curRotY, 0);
-            
-            prevPos = hitMarker;
-            prevRot = Rotation;
+            isCurrentlySnaped = Snap(hitMarker, Rotation, out prevPos, out prevRot );
+        
             DrawHouse(sceneView);
+            
+            if(e.type == EventType.MouseDown && e.button == 0)
+            {
+                if (!isCurrentlySnaped)
+                {
+                    e.Use();
+                    return;
+                }
+                if(container == null) container =  new GameObject("New Room");
+                else container = GameObject.Find("New Room");
+                GameObject gameOBJ = (GameObject)PrefabUtility.InstantiatePrefab(selectedPrefab, container.transform);
+                gameOBJ.transform.SetPositionAndRotation(prevPos, prevRot);
+
+                Undo.RegisterCreatedObjectUndo(gameOBJ, "spawn room");
+                UpdateDoorStatus(gameOBJ);
+                SpawnedRooms.Add(gameOBJ);
+                e.Use();
+            }
         }
+        
         sceneView.Repaint();
     }
+    bool Snap(Vector3 basePos, Quaternion BaseRot, out Vector3 finalPos, out Quaternion finalRot)
+    {
+        finalPos = basePos;
+        finalRot = BaseRot;
+
+        if(selectedPrefab == null) return false;
+        DoorsController_ selDoorController = selectedPrefab.GetComponent<DoorsController_>();
+        if(selDoorController == null || selDoorController.doorsInfo.Count == 0) return false;
+
+        SpawnedRooms.RemoveAll(x => x == null);
+
+        float closestdist = float.MaxValue;
+        bool foundSnap = false;
+
+        foreach (var selcRoom in selDoorController.doorsInfo)//riferito ad ogni porta nella stanza selezionata 
+        {
+            if (selcRoom.collider == null) continue;
+            Quaternion localDoorRot = Quaternion.Inverse(selectedPrefab.transform.rotation) * selcRoom.collider.transform.rotation;
+            Vector3 localDoorPos = Quaternion.Inverse(selectedPrefab.transform.rotation) * (selcRoom.collider.transform.position - selectedPrefab.transform.position);
+
+            Vector3 curPrevDoorWorldPos  = basePos + (BaseRot * localDoorPos);       
+            Vector3 curPrevDoorWorldFor = BaseRot * localDoorRot * Vector3.forward;
+            foreach (var AlrExRoom in SpawnedRooms)//per ogni stanza gia presente
+            {
+                DoorsController_ exRoom = AlrExRoom.GetComponent<DoorsController_>();
+                if (AlrExRoom == null) continue;
+                foreach (var targetDoor in exRoom.doorsInfo)//per ogni porta di una stanza
+                {
+                    if(targetDoor.collider == null || targetDoor.occupied)continue;
+                    float distance = Vector3.Distance(curPrevDoorWorldPos, targetDoor.collider.transform.position);
+                    if (distance <= DiscSize && distance < closestdist && Vector3.Dot(curPrevDoorWorldFor, targetDoor.collider.transform.forward) < -0.7f)
+                    {
+                        Quaternion desiredDoorRotation = Quaternion.LookRotation(-targetDoor.collider.transform.forward, Vector3.up);
+                        Quaternion selectedDoorRot = desiredDoorRotation * Quaternion.Inverse(localDoorRot);
+                        Vector3 TargetDoorPosition = targetDoor.collider.transform.position - (selectedDoorRot * localDoorPos);
+
+                        closestdist = distance;
+                        finalPos = TargetDoorPosition;
+                        finalRot = selectedDoorRot;
+                        foundSnap = true;
+                    }
+                }
+            }
+        }
+        return foundSnap;
+
+    }
+
     void ButtonOver()
     {
         float buttonSize = 100f;
@@ -198,10 +278,31 @@ public class ToolBuilderW_ : EditorWindow
                 }
             }
         }
+        GUILayout.Space(20);
+        if(GUILayout.Button("UNDO", GUILayout.Width(buttonSize), GUILayout.Height(buttonSize)))
+        {
+            if(SpawnedRooms.Count > 0)
+            {
+                UndoButton();
+            }
+        }
         GUILayout.EndArea();
         Handles.EndGUI();
         SceneView.RepaintAll();
     }
+
+    private void UndoButton()
+    {
+        SpawnedRooms.RemoveAll(x => x == null);
+        if(SpawnedRooms.Count > 0)
+        {
+           GameObject lastRoom = SpawnedRooms[SpawnedRooms.Count - 1];
+           SpawnedRooms.RemoveAt(SpawnedRooms.Count - 1);
+           Undo.DestroyObjectImmediate(lastRoom); 
+        }
+        GUIUtility.ExitGUI();
+    }
+
     void DrawHouse(SceneView sceneView)
     {
         if (visibleArea)
@@ -245,6 +346,31 @@ public class ToolBuilderW_ : EditorWindow
                     localMatrixPref = _localMatrixes
                 };
                 roomParts.Add(piece);
+            }
+        }
+    }
+    void UpdateDoorStatus(GameObject NewRoomSpawned)
+    {
+        DoorsController_ newDoor= NewRoomSpawned.GetComponent<DoorsController_>();
+        if(newDoor == null) return;
+        foreach(var exRoomObj in SpawnedRooms)
+        {
+            DoorsController_ exRoom = exRoomObj.GetComponent<DoorsController_>();
+            if(exRoom == newDoor || exRoom == null) continue;
+            foreach (var targetDoor in exRoom.doorsInfo)
+            {
+                if(targetDoor.collider == null || targetDoor.occupied) continue;
+                foreach(var newDoors in newDoor.doorsInfo)
+                {
+                    if(newDoors.collider == null) continue;
+                    if(Vector3.Distance(newDoors.collider.transform.position, targetDoor.collider.transform.position) < 0.05f)
+                    {
+                        Undo.RecordObject(exRoom, " Undo doors");
+                        Undo.RecordObject(newDoor, " Undo doors");
+                        targetDoor.occupied = true;
+                        newDoors.occupied = true;
+                    }
+                }
             }
         }
     }
