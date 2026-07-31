@@ -190,7 +190,7 @@ GameObject:
   m_Component:
   - component: {fileID: 3194585123221215502}
   m_Layer: 0
-  m_Name: 2 door, room 2
+  m_Name: Corridor 2D
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
