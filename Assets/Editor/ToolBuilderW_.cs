@@ -2,6 +2,9 @@ using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 using System.IO;
+using Unity.VectorGraphics;
+using System.Net.WebSockets;
+using Unity.GraphToolkit.Editor;
 
 public class ToolBuilderW_ : EditorWindow
 {
@@ -16,17 +19,26 @@ public class ToolBuilderW_ : EditorWindow
 
     private int DiscSize;
     private bool visibleArea;
-    Vector3 prevPos;
     class CategoryData
     {
         public string Name;
         public string[] RoomPath;
         public string[] RoomName;
         public GameObject[] RoomAssets;
+        public Mesh MeshPrefab;
+        public Material[] materialPrefab;
+        public Matrix4x4 localMatrixPref;
     }
     const string path = "Assets/Prefab";
     readonly List<CategoryData> categoryList = new();
     CategoryData selectedCategory;
+
+    static readonly List<CategoryData> roomParts = new();
+    static GameObject selectedPrefab;
+
+    float curRotY = 0f;
+    Vector3 prevPos;
+    Quaternion prevRot;
     private void OnEnable()
     {
         FoldScanner();
@@ -64,6 +76,11 @@ public class ToolBuilderW_ : EditorWindow
                 categoryDatas.RoomAssets[i] = AssetDatabase.LoadAssetAtPath<GameObject>(categoryDatas.RoomPath[i]);
             }
             categoryList.Add(categoryDatas);
+        }
+        if(categoryList.Count > 0)
+        {
+            selectedCategory = categoryList[0];
+            SelectedPrefab(selectedCategory.RoomAssets[0]);
         }
     }
     private void OnGUI()
@@ -121,24 +138,28 @@ public class ToolBuilderW_ : EditorWindow
             if(GUILayout.Button(category.Name))
             {
                 selectedCategory = category;
+                if(category.RoomAssets.Length > 0) SelectedPrefab(category.RoomAssets[0]);
             }
         }
     }
     void OnSceneGUI(SceneView sceneView)
     {
         ButtonOver();
-        if(!visibleArea)return;
+        Preview(sceneView);
+    }
+    void Preview(SceneView sceneView)
+    {
         Event e = Event.current;
         Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
         Plane ground = new(Vector3.up, Vector3.zero);
         if (ground.Raycast(ray, out float hit))
         {
             Vector3 hitMarker = ray.GetPoint(hit);
-            if (visibleArea)
-            {
-                Handles.color = Color.red;
-                Handles.DrawWireDisc(hitMarker, Vector3.up, DiscSize);   
-            }
+            Quaternion Rotation = Quaternion.Euler(0, curRotY, 0);
+            
+            prevPos = hitMarker;
+            prevRot = Rotation;
+            DrawHouse(sceneView);
         }
         sceneView.Repaint();
     }
@@ -158,12 +179,58 @@ public class ToolBuilderW_ : EditorWindow
                 else content = new GUIContent(selectedCategory.RoomName[i]);
                 if(GUILayout.Button(content, GUILayout.Width(buttonSize), GUILayout.Height(buttonSize)))
                 {
-                    
+                    SelectedPrefab(prefab);
                 }
             }
         }
         GUILayout.EndArea();
         Handles.EndGUI();
         SceneView.RepaintAll();
+    }
+    void DrawHouse(SceneView sceneView)
+    {
+        if (visibleArea)
+        {
+            Handles.color = Color.red;
+            Handles.DrawWireDisc(prevPos, Vector3.up, DiscSize);   
+        }
+        if(selectedPrefab != null && roomParts.Count > 0)
+        {
+            HandleUtility.AddDefaultControl(GUIUtility.GetControlID(FocusType.Passive));
+
+            Matrix4x4 matrix = Matrix4x4.TRS(prevPos, prevRot, selectedPrefab.transform.localScale);
+            foreach(var piece in roomParts)
+            {
+                if(piece.MeshPrefab == null || piece.materialPrefab == null) continue;
+                Matrix4x4 finalMatrix = matrix * piece.localMatrixPref;
+                for(int i = 0; i < piece.materialPrefab.Length; i++)
+                {
+                    Graphics.DrawMesh(piece.MeshPrefab, finalMatrix, piece.materialPrefab[i], 0, sceneView.camera, i);
+                }
+            }
+        }
+    }
+    void SelectedPrefab(GameObject Sys32)
+    {
+        selectedPrefab = Sys32;
+        roomParts.Clear();
+        if(Sys32 == null) return;
+        MeshFilter[] pieceFilters = Sys32.GetComponentsInChildren<MeshFilter>();
+
+        foreach(var pf in pieceFilters)
+        {
+            MeshRenderer pieceRenderers = pf.GetComponent<MeshRenderer>();
+            if(/*int i = 0; i < X; i++ */ pf.sharedMesh != null && pieceRenderers != null)
+            {
+                Matrix4x4 _localMatrixes = Sys32.transform.worldToLocalMatrix * pf.transform.localToWorldMatrix;
+                CategoryData piece = new()
+                {
+                    MeshPrefab = pf.sharedMesh,
+                    materialPrefab = pieceRenderers.sharedMaterials,
+                    localMatrixPref = _localMatrixes
+                };
+                roomParts.Add(piece);
+            }
+        }
     }
 }
