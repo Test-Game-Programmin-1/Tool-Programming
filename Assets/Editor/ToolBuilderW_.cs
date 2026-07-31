@@ -10,6 +10,7 @@ public class ToolBuilderW_ : EditorWindow
     }
     private int DiscSize;
     private bool visibleArea;
+    Vector3 prevPos;
     private void OnEnable()
     {
         SceneView.duringSceneGui += OnSceneGUI;
@@ -96,11 +97,15 @@ public class ToolBuilderW_ : EditorWindow
         if(!visibleArea)return;
         Event e = Event.current;
         Ray ray = HandleUtility.GUIPointToWorldRay(e.mousePosition);
-        RaycastHit hit;
-        if (Physics.Raycast(ray, out hit))
+        Plane ground = new(Vector3.up, Vector3.zero);
+        if (ground.Raycast(ray, out float hit))
         {
-            Handles.color = Color.red;
-            Handles.DrawWireDisc(hit.point, Vector3.up, DiscSize);
+            Vector3 hitMarker = ray.GetPoint(hit);
+            if (visibleArea)
+            {
+                Handles.color = Color.red;
+                Handles.DrawWireDisc(hitMarker, Vector3.up, DiscSize);   
+            }
         }
         sceneView.Repaint();
     }
